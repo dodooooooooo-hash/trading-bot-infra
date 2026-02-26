@@ -248,6 +248,28 @@ async def on_ready():
     setup_signal_tasks(bot, DISCORD_GUILD_ID)
     logger.info("Signal bot started!")
 
+    # Start market analysis
+    from market_analysis import post_daily_analysis
+    from discord.ext import tasks
+    from datetime import time as dtime
+
+    @tasks.loop(time=dtime(hour=15, minute=0))  # 3:00 PM UTC = 10:00 AM ET
+    async def daily_market_analysis():
+        await post_daily_analysis(bot, DISCORD_GUILD_ID)
+
+    @daily_market_analysis.before_loop
+    async def before_market_analysis():
+        await bot.wait_until_ready()
+        logger.info("Market analysis task ready — will run daily at 15:00 UTC (10:00 AM ET)")
+
+    daily_market_analysis.start()
+    logger.info("Market analysis started!")
+
+    # Start Q&A bot
+    from qa_bot import setup_qa_bot
+    setup_qa_bot(bot, DISCORD_GUILD_ID)
+    logger.info("Q&A bot started!")
+
     logger.info("Ready!")
 
 
@@ -292,3 +314,13 @@ async def cmd_health(ctx):
         f"• Channels: {'✅' if channels_ok else '⚠️ Some missing'}\n"
         f"• Pending role assignments: {pending}\n"
     )
+
+
+@bot.command(name="market")
+@commands.has_permissions(administrator=True)
+async def cmd_market(ctx):
+    """Force-run daily market analysis."""
+    await ctx.send("⚙️ Running market analysis...")
+    from market_analysis import post_daily_analysis
+    await post_daily_analysis(bot, DISCORD_GUILD_ID)
+    await ctx.send("✅ Market analysis posted!")
