@@ -605,4 +605,36 @@ def setup_signal_tasks(bot: commands.Bot, guild_id: int):
         except Exception as e:
             await ctx.send(f"❌ Error: {e}")
 
+    @bot.command(name="rebalance")
+    @commands.has_permissions(administrator=True)
+    async def cmd_force_rebalance(ctx):
+        """Force-run full rebalance for both strategies (admin only)."""
+        await ctx.send("⚙️ Running full rebalance (TMEM + MEC)... This may take a minute.")
+        try:
+            _ensure_imports()
+            spy_data = fetch_spy_data(lookback_days=400)
+            prices, volume = fetch_universe_data(SP500_UNIVERSE, lookback_days=400)
+            if prices.empty:
+                await ctx.send("❌ Failed to fetch data")
+                return
+            spy_prices = spy_data["Adj Close"]
+            if hasattr(spy_prices, 'columns'):
+                spy_prices = spy_prices.iloc[:, 0]
+            # TMEM
+            regime = compute_tmem_regime(spy_prices)
+            tmem_picks = compute_tmem_top_stocks(prices, volume, n_holdings=30) if regime["is_risk_on"] else []
+            tmem_msg = format_tmem_monthly_picks(regime, tmem_picks)
+            ch = signal_bot.get_channel("📊-tmem-signals")
+            if ch:
+                await ch.send(tmem_msg)
+            # MEC
+            mec_picks = compute_mec_top_stocks(prices, volume, n_holdings=40)
+            mec_msg = format_mec_monthly_picks(mec_picks)
+            ch = signal_bot.get_channel("📊-mec-signals")
+            if ch:
+                await ch.send(mec_msg)
+            await ctx.send(f"✅ Posted TMEM ({len(tmem_picks)} stocks) + MEC ({len(mec_picks)} stocks)")
+        except Exception as e:
+            await ctx.send(f"❌ Error: {e}")
+
     logger.info("Signal bot tasks registered")
