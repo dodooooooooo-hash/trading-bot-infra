@@ -350,29 +350,39 @@ def format_tmem_monthly_picks(regime: dict, picks: list) -> str:
     return msg
 
 
-def format_mec_monthly_picks(picks: list) -> str:
-    """Format MEC monthly rebalance for Discord."""
+def format_mec_monthly_picks(picks: list) -> list:
+    """Format MEC monthly rebalance for Discord. Returns list of messages."""
     date_str = datetime.now().strftime("%B %Y")
 
-    msg = (
+    header = (
         f"**📊 MEC Monthly Rebalance — {date_str}**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         f"**Top 40 Momentum + Earnings Confirmed Stocks**\n"
         f"Equal Weight (2.50% each) | Fully Invested\n\n"
     )
 
-    msg += "```\n"
-    msg += f"{'Rank':<6} {'Ticker':<8} {'12-1 Mom %':<12} {'Price':>8}\n"
-    msg += f"{'─'*6} {'─'*8} {'─'*12} {'─'*8}\n"
-
-    for pick in picks:
-        msg += (
+    # Split into two messages: stocks 1-20 and 21-40
+    msg1 = header
+    msg1 += "```\n"
+    msg1 += f"{'Rank':<6} {'Ticker':<8} {'12-1 Mom %':<12} {'Price':>8}\n"
+    msg1 += f"{'─'*6} {'─'*8} {'─'*12} {'─'*8}\n"
+    for pick in picks[:20]:
+        msg1 += (
             f"{pick['rank']:<6} {pick['ticker']:<8} "
             f"{pick['momentum']:>+10.2f}%  ${pick['price']:>7.2f}\n"
         )
+    msg1 += "```"
 
-    msg += "```\n\n"
-    msg += (
+    msg2 = "```\n"
+    msg2 += f"{'Rank':<6} {'Ticker':<8} {'12-1 Mom %':<12} {'Price':>8}\n"
+    msg2 += f"{'─'*6} {'─'*8} {'─'*12} {'─'*8}\n"
+    for pick in picks[20:]:
+        msg2 += (
+            f"{pick['rank']:<6} {pick['ticker']:<8} "
+            f"{pick['momentum']:>+10.2f}%  ${pick['price']:>7.2f}\n"
+        )
+    msg2 += "```\n\n"
+    msg2 += (
         "**Rebalance instructions:**\n"
         "• Equal-weight all 40 stocks at 2.50% each\n"
         "• Sell any stocks no longer in the top 40\n"
@@ -380,13 +390,12 @@ def format_mec_monthly_picks(picks: list) -> str:
         "• MEC remains fully invested — no market timing\n"
         "• Next rebalance: 1st trading day of next month"
     )
-
-    msg += (
+    msg2 += (
         "\n\n*⚠️ This is not financial advice. "
         "Past performance does not guarantee future results.*"
     )
 
-    return msg
+    return [msg1, msg2]
 
 
 # ─── Signal Runner ─────────────────────────────────────────
@@ -517,11 +526,12 @@ class SignalBot:
 
             # ── MEC Rebalance (Monthly) ──
             mec_picks = compute_mec_top_stocks(prices, volume, n_holdings=40)
-            mec_msg = format_mec_monthly_picks(mec_picks)
+            mec_msgs = format_mec_monthly_picks(mec_picks)
 
             mec_channel = self.get_channel("📊-mec-signals")
             if mec_channel:
-                await mec_channel.send(mec_msg)
+                for msg in mec_msgs:
+                    await mec_channel.send(msg)
                 logger.info(f"Posted MEC monthly rebalance: {len(mec_picks)} stocks")
             else:
                 logger.warning("Channel 📊-mec-signals not found")
@@ -629,10 +639,11 @@ def setup_signal_tasks(bot: commands.Bot, guild_id: int):
                 await ch.send(tmem_msg)
             # MEC
             mec_picks = compute_mec_top_stocks(prices, volume, n_holdings=40)
-            mec_msg = format_mec_monthly_picks(mec_picks)
+            mec_msgs = format_mec_monthly_picks(mec_picks)
             ch = signal_bot.get_channel("📊-mec-signals")
             if ch:
-                await ch.send(mec_msg)
+                for msg in mec_msgs:
+                    await ch.send(msg)
             await ctx.send(f"✅ Posted TMEM ({len(tmem_picks)} stocks) + MEC ({len(mec_picks)} stocks)")
         except Exception as e:
             await ctx.send(f"❌ Error: {e}")
